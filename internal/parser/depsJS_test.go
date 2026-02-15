@@ -51,7 +51,7 @@ func TestProduceDepsJS(t *testing.T) {
 		t.Fatalf("couldn't create client: %v", err)
 	}
 
-	result, err := ProduceDepsJS(ctx, repo, client)
+	result, err := ExtractDepsJS(ctx, repo, client)
 
 	if err != nil {
 		t.Fatalf("ProduceDepsJS returned unexpected error: %v", err)

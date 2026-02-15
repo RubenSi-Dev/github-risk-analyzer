@@ -13,11 +13,12 @@ type packageJSON struct {
 	DevDependencies map[string]string `json:"devDependencies"`
 }
 
-func ProduceDepsJS(ctx context.Context, repo models.Repository, client *github.Client) ([]models.Dependency, error) {
+func ExtractDepsJS(ctx context.Context, repo models.Repository, client *github.Client) ([]models.Dependency, error) {
 	githContents, _, _, err := client.Repositories.GetContents(ctx, repo.Owner, repo.Name, "./package.json", nil)
 	if err != nil {
 		return nil, err
 	}
+
 	contents, err := githContents.GetContent()
 	if err != nil {
 		return nil, err

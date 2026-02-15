@@ -26,11 +26,11 @@ func TestRunScanner(t *testing.T) {
 		t.Fatalf("RunScanner failed: %v", err)
 	}
 
-	if len(results) != len(tasks) {
-		t.Errorf("expected %d results, got %d", len(tasks), len(results))
+	if len(*results) != len(tasks) {
+		t.Errorf("expected %d results, got %d", len(tasks), len(*results))
 	}
 
-	for _, res := range results {
+	for _, res := range *results {
 		if res.Repo.Name == "" {
 			t.Error("expected repo name to be populated in result")
 		}
@@ -45,7 +45,7 @@ func TestRunScanner_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunScanner failed: %v", err)
 	}
-	if len(results) != 0 {
-		t.Errorf("expected 0 results, got %d", len(results))
+	if len(*results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(*results))
 	}
 }

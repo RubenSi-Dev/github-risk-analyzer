@@ -2,9 +2,7 @@ package scanner
 
 import (
 	"context"
-	"fmt"
-	"math/rand"
-	"time"
+	"sync"
 
 	"github.com/google/go-github/github"
 	"github.com/rubensi-dev/github-risk-analyzer/internal/authentication"
@@ -19,40 +17,68 @@ type Risks struct {
 	Err             error
 }
 
-func RunScanner(ctx context.Context, tasks []models.Repository, numWorkers int) ([]Risks, error) {
-	taskChan := make(chan models.Repository, len(tasks))
-	resultsChan := make(chan Risks, len(tasks))
+// Produecer produce this, consumer consume this
+type scanJob struct {
+	Repo         models.Repository
+	Dependencies []models.Dependency
+	Err          error
+}
 
+// run the scanner on a slice of repos
+func RunScanner(ctx context.Context, tasks []models.Repository, numWorkers int) (*[]Risks, error) {
+	// taskchan will be populated with repos to scan
+	taskChan := make(chan models.Repository, len(tasks))
+	//scanTaskChan will be populated with scanjobs by the producer, which will be consumed by the consumer
+	scanTaskChan := make(chan scanJob, numWorkers)
+	//will be populated with the results from the consumers
+	resultsChan := make(chan Risks, numWorkers)
+
+	// authenticate to github for more access
 	client, err := authentication.GetAuthorizedClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// start the workers
+	//start the producers
+	var wg sync.WaitGroup
 	for range numWorkers {
-		go repoWorker(ctx, client, taskChan, resultsChan)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			scanJobProducer(ctx, client, taskChan, scanTaskChan)
+		}()
 	}
+
+	// close channel when producers are done
+	go func() {
+		wg.Wait()
+		close(scanTaskChan)
+	}()
 
 	// feed tasks
 	for _, t := range tasks {
 		taskChan <- t
 	}
 	close(taskChan)
+	// start the consumers
+	for range numWorkers {
+		go scanJobConsumer(ctx, scanTaskChan, resultsChan)
+	}
 
-	// collect results
-	foundRisks := make([]Risks, len(tasks))
-	for i := range tasks {
+	results := make([]Risks, 0, len(tasks))
+
+	for range tasks {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
-		case result := <-resultsChan:
-			foundRisks[i] = result
+			return &results, ctx.Err()
+		case res := <-resultsChan:
+			results = append(results, res)
 		}
 	}
-	return foundRisks, nil
+	return &results, nil
 }
 
-func repoWorker(ctx context.Context, client *github.Client, taskChan chan models.Repository, resultsChan chan Risks) {
+func scanJobProducer(ctx context.Context, client *github.Client, taskChan chan models.Repository, scanTaskChan chan scanJob) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -63,11 +89,11 @@ func repoWorker(ctx context.Context, client *github.Client, taskChan chan models
 			}
 
 			//handle repo
-			result := Risks{Repo: repo}
+			result := scanJob{Repo: repo}
 			langs, _, err := client.Repositories.ListLanguages(ctx, repo.Owner, repo.Name)
 			if err != nil {
 				result.Err = err
-				resultsChan <- result
+				scanTaskChan <- result
 				continue
 			}
 
@@ -78,26 +104,37 @@ func repoWorker(ctx context.Context, client *github.Client, taskChan chan models
 			var deps []models.Dependency
 			if hasJS || hasTS {
 				var err error
-				deps, err = parser.ProduceDepsJS(ctx, repo, client)
+				deps, err = parser.ExtractDepsJS(ctx, repo, client)
 				if err != nil {
 					result.Err = err
-					resultsChan <- result
+					scanTaskChan <- result
 					continue
 				}
 			}
 
 			for _, dep := range deps {
-				// wait a random amount of time between 1 and 3 seconds
-				waitTime := time.Duration(1+rand.Intn(3)) * time.Millisecond
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(waitTime):
-					randomRisk := fmt.Sprintf("Risk found in %s", dep)
-					result.Vulnerabilities = append(result.Vulnerabilities, models.Vulnerability(randomRisk))
-				}
+				result.Dependencies = append(result.Dependencies, models.Dependency(dep))
 			}
-			resultsChan <- result
+			scanTaskChan <- result
+		}
+	}
+}
+
+func scanJobConsumer(ctx context.Context, scanTaskChan chan scanJob, resultsChan chan Risks) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case scanJob, ok := <-scanTaskChan:
+			if !ok {
+				return
+			}
+			// handle scanJob
+			resultsChan <- Risks{
+				Repo:            scanJob.Repo,
+				Vulnerabilities: []models.Vulnerability{"not yet implemented"},
+				Err:             nil,
+			}
 		}
 	}
 }
