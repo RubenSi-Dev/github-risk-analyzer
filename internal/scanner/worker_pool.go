@@ -27,7 +27,7 @@ type scanJob struct {
 }
 
 // run the scanner on a slice of repos
-func RunScanner(ctx context.Context, tasks []models.Repository, numWorkers int) (*[]Risks, error) {
+func RunScanner(ctx context.Context, tasks []models.Repository, numWorkers int) ([]Risks, error) {
 	// taskchan will be populated with repos to scan
 	taskChan := make(chan models.Repository, len(tasks))
 	//scanTaskChan will be populated with scanjobs by the producer, which will be consumed by the consumer
@@ -76,7 +76,7 @@ func RunScanner(ctx context.Context, tasks []models.Repository, numWorkers int) 
 	}
 	wgConsumer.Wait()
 
-	return &results, nil
+	return results, nil
 }
 
 func scanJobProducer(ctx context.Context, client *github.Client, taskChan chan models.Repository, scanTaskChan chan scanJob) {
@@ -138,29 +138,7 @@ func scanJobConsumer(ctx context.Context, scanTaskChan chan scanJob, mu *sync.Mu
 				continue
 			}
 
-			var vulns []models.Vulnerability
-			var osvWg sync.WaitGroup
-			var osvMu sync.Mutex
-			// Limit concurrency to avoid exploding worker count (e.g., 5 concurrent checks)
-			sem := make(chan struct{}, 5)
-
-			// spawn osv vulnscanner workers
-			for _, dep := range scanJob.Dependencies {
-				osvWg.Add(1)
-				go func(d models.Dependency) {
-					defer osvWg.Done()
-					sem <- struct{}{}
-					defer func() { <-sem }()
-					newVulns, err := osv.QueryVulnerabilities(ctx, d)
-					if err != nil {
-						return
-					}
-					osvMu.Lock()
-					vulns = append(vulns, newVulns...)
-					osvMu.Unlock()
-				}(dep)
-			}
-			osvWg.Wait()
+			vulns, _ := osv.QueryVulnerabilitiesBatch(ctx, scanJob.Dependencies)
 
 			mu.Lock()
 			*results = append(*results, Risks{Repo: scanJob.Repo, Vulnerabilities: vulns, Err: ctx.Err()})
