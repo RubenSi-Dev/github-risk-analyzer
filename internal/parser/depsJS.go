@@ -30,11 +30,13 @@ func ExtractDepsJS(ctx context.Context, repo models.Repository, client *github.C
 	}
 
 	var deps []models.Dependency
-	for dep := range packageJSON.Dependencies {
+	for depString := range packageJSON.Dependencies {
+		dep := models.Dependency{Name: depString, Ecosystem: "npm"}
 		deps = append(deps, models.Dependency(dep))
 	}
 
-	for dep := range packageJSON.DevDependencies {
+	for depString := range packageJSON.DevDependencies {
+		dep := models.Dependency{Name: depString, Ecosystem: "npm"}
 		deps = append(deps, models.Dependency(dep))
 	}
 

@@ -7,6 +7,7 @@ import (
 	"github.com/google/go-github/github"
 	"github.com/rubensi-dev/github-risk-analyzer/internal/authentication"
 	"github.com/rubensi-dev/github-risk-analyzer/internal/models"
+	"github.com/rubensi-dev/github-risk-analyzer/internal/osv"
 	"github.com/rubensi-dev/github-risk-analyzer/internal/parser"
 )
 
@@ -129,10 +130,40 @@ func scanJobConsumer(ctx context.Context, scanTaskChan chan scanJob, resultsChan
 			if !ok {
 				return
 			}
-			// handle scanJob
+
+			if scanJob.Err != nil {
+				resultsChan <- Risks{Repo: scanJob.Repo, Err: scanJob.Err}
+				continue
+			}
+
+			var vulns []models.Vulnerability
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+			// Limit concurrency to avoid exploding worker count (e.g., 10 concurrent checks)
+			sem := make(chan struct{}, 10)
+
+			for _, dep := range scanJob.Dependencies {
+				wg.Add(1)
+				go func(d models.Dependency) {
+					defer wg.Done()
+					sem <- struct{}{}
+					defer func() { <-sem }()
+
+					newVulns, err := osv.QueryVulnerabilities(ctx, dep)
+					if err != nil {
+						return
+					}
+
+					mu.Lock()
+					vulns = append(vulns, newVulns...)
+					mu.Unlock()
+				}(dep)
+			}
+			wg.Wait()
+
 			resultsChan <- Risks{
 				Repo:            scanJob.Repo,
-				Vulnerabilities: []models.Vulnerability{"not yet implemented"},
+				Vulnerabilities: vulns,
 				Err:             nil,
 			}
 		}

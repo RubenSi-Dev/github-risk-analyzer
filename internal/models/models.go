@@ -2,9 +2,17 @@ package models
 
 import "fmt"
 
-type Vulnerability string
-type Dependency string
+type Dependency struct {
+	Name      string
+	Ecosystem string // e.g., "npm", "Go", "Maven", "PyPI"
+}
 
+type Vulnerability struct {
+	ID       string `json:"id"`
+	Summary  string `json:"summary"`
+	Details  string `json:"details"`
+	Severity string `json:"severity"` // e.g., "CRITICAL", "HIGH", "MEDIUM", "LOW"
+}
 type Repository struct {
 	Owner string
 	Name  string
