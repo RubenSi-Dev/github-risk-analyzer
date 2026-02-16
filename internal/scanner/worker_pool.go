@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/google/go-github/github"
@@ -32,7 +33,7 @@ func RunScanner(ctx context.Context, tasks []models.Repository, numWorkers int) 
 	//scanTaskChan will be populated with scanjobs by the producer, which will be consumed by the consumer
 	scanTaskChan := make(chan scanJob, numWorkers)
 	//will be populated with the results from the consumers
-	resultsChan := make(chan Risks, numWorkers)
+	//resultsChan := make(chan Risks, numWorkers)
 
 	// authenticate to github for more access
 	client, err := authentication.GetAuthorizedClient(ctx)
@@ -41,18 +42,18 @@ func RunScanner(ctx context.Context, tasks []models.Repository, numWorkers int) 
 	}
 
 	//start the producers
-	var wg sync.WaitGroup
+	var wgProducer sync.WaitGroup
 	for range numWorkers {
-		wg.Add(1)
+		wgProducer.Add(1)
 		go func() {
-			defer wg.Done()
+			defer wgProducer.Done()
 			scanJobProducer(ctx, client, taskChan, scanTaskChan)
 		}()
 	}
 
 	// close channel when producers are done
 	go func() {
-		wg.Wait()
+		wgProducer.Wait()
 		close(scanTaskChan)
 	}()
 
@@ -61,21 +62,20 @@ func RunScanner(ctx context.Context, tasks []models.Repository, numWorkers int) 
 		taskChan <- t
 	}
 	close(taskChan)
+
+	var wgConsumer sync.WaitGroup
+	results := make([]Risks, 0, len(tasks))
+	var muResults sync.Mutex
 	// start the consumers
 	for range numWorkers {
-		go scanJobConsumer(ctx, scanTaskChan, resultsChan)
+		wgConsumer.Add(1)
+		go func() {
+			defer wgConsumer.Done()
+			scanJobConsumer(ctx, scanTaskChan, &muResults, &results)
+		}()
 	}
+	wgConsumer.Wait()
 
-	results := make([]Risks, 0, len(tasks))
-
-	for range tasks {
-		select {
-		case <-ctx.Done():
-			return &results, ctx.Err()
-		case res := <-resultsChan:
-			results = append(results, res)
-		}
-	}
 	return &results, nil
 }
 
@@ -121,7 +121,7 @@ func scanJobProducer(ctx context.Context, client *github.Client, taskChan chan m
 	}
 }
 
-func scanJobConsumer(ctx context.Context, scanTaskChan chan scanJob, resultsChan chan Risks) {
+func scanJobConsumer(ctx context.Context, scanTaskChan chan scanJob, mu *sync.Mutex, results *[]Risks) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -132,40 +132,40 @@ func scanJobConsumer(ctx context.Context, scanTaskChan chan scanJob, resultsChan
 			}
 
 			if scanJob.Err != nil {
-				resultsChan <- Risks{Repo: scanJob.Repo, Err: scanJob.Err}
+				mu.Lock()
+				*results = append(*results, Risks{Repo: scanJob.Repo, Err: scanJob.Err})
+				mu.Unlock()
 				continue
 			}
 
 			var vulns []models.Vulnerability
-			var wg sync.WaitGroup
-			var mu sync.Mutex
-			// Limit concurrency to avoid exploding worker count (e.g., 10 concurrent checks)
-			sem := make(chan struct{}, 10)
+			var osvWg sync.WaitGroup
+			var osvMu sync.Mutex
+			// Limit concurrency to avoid exploding worker count (e.g., 5 concurrent checks)
+			sem := make(chan struct{}, 5)
 
+			// spawn osv vulnscanner workers
 			for _, dep := range scanJob.Dependencies {
-				wg.Add(1)
+				osvWg.Add(1)
 				go func(d models.Dependency) {
-					defer wg.Done()
+					defer osvWg.Done()
 					sem <- struct{}{}
 					defer func() { <-sem }()
-
-					newVulns, err := osv.QueryVulnerabilities(ctx, dep)
+					newVulns, err := osv.QueryVulnerabilities(ctx, d)
 					if err != nil {
 						return
 					}
-
-					mu.Lock()
+					osvMu.Lock()
 					vulns = append(vulns, newVulns...)
-					mu.Unlock()
+					osvMu.Unlock()
 				}(dep)
 			}
-			wg.Wait()
+			osvWg.Wait()
 
-			resultsChan <- Risks{
-				Repo:            scanJob.Repo,
-				Vulnerabilities: vulns,
-				Err:             nil,
-			}
+			mu.Lock()
+			*results = append(*results, Risks{Repo: scanJob.Repo, Vulnerabilities: vulns, Err: ctx.Err()})
+			fmt.Printf("results: %v", *results)
+			mu.Unlock()
 		}
 	}
 }
