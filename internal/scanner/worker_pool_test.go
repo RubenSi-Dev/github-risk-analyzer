@@ -34,7 +34,7 @@ func TestRunScanner(t *testing.T) {
 		if res.Repo.Name == "" {
 			t.Error("expected repo name to be populated in result")
 		}
-		t.Logf("Scanned %s/%s: %d vulnerabilities found (err: %v)\n FOUND VULNERABILITIES: %v", res.Repo.Owner, res.Repo.Name, len(res.Vulnerabilities), res.Err, res.Vulnerabilities)
+		t.Logf("Scanned %s/%s: %d vulnerabilities found (err: %v)", res.Repo.Owner, res.Repo.Name, len(res.Vulnerabilities), res.Err)
 	}
 }
 

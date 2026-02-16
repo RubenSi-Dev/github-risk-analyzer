@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rubensi-dev/github-risk-analyzer/internal/authentication"
+	"github.com/rubensi-dev/github-risk-analyzer/internal/githubhelper"
 	"github.com/rubensi-dev/github-risk-analyzer/internal/models"
 )
 
@@ -46,7 +46,7 @@ func TestExtractDepsJS(t *testing.T) {
 func TestProduceDepsJS(t *testing.T) {
 	ctx := t.Context()
 	repo := models.Repository{Owner: "SynkraAI", Name: "aios-core"}
-	client, err := authentication.GetAuthorizedClient(ctx)
+	client, err := githubhelper.GetAuthorizedClient(ctx)
 	if err != nil {
 		t.Fatalf("couldn't create client: %v", err)
 	}

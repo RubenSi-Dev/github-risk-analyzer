@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/google/go-github/github"
-	"github.com/rubensi-dev/github-risk-analyzer/internal/authentication"
+	"github.com/rubensi-dev/github-risk-analyzer/internal/githubhelper"
 	"github.com/rubensi-dev/github-risk-analyzer/internal/models"
 	"github.com/rubensi-dev/github-risk-analyzer/internal/osv"
 	"github.com/rubensi-dev/github-risk-analyzer/internal/parser"
@@ -36,7 +36,7 @@ func RunScanner(ctx context.Context, tasks []models.Repository, numWorkers int) 
 	//resultsChan := make(chan Risks, numWorkers)
 
 	// authenticate to github for more access
-	client, err := authentication.GetAuthorizedClient(ctx)
+	client, err := githubhelper.GetAuthorizedClient(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -91,26 +91,12 @@ func scanJobProducer(ctx context.Context, client *github.Client, taskChan chan m
 
 			//handle repo
 			result := scanJob{Repo: repo}
-			langs, _, err := client.Repositories.ListLanguages(ctx, repo.Owner, repo.Name)
+
+			deps, err := parser.ExtractDeps(ctx, repo, client)
 			if err != nil {
 				result.Err = err
 				scanTaskChan <- result
 				continue
-			}
-
-			_, hasJS := langs["JavaScript"]
-			_, hasTS := langs["TypeScript"]
-			//_, hasGo := langs["Go"]
-
-			var deps []models.Dependency
-			if hasJS || hasTS {
-				var err error
-				deps, err = parser.ExtractDepsJS(ctx, repo, client)
-				if err != nil {
-					result.Err = err
-					scanTaskChan <- result
-					continue
-				}
 			}
 
 			for _, dep := range deps {
