@@ -3,6 +3,7 @@ package scanner
 import (
 	"testing"
 
+	"github.com/rubensi-dev/github-risk-analyzer/internal/githubhelper"
 	"github.com/rubensi-dev/github-risk-analyzer/internal/models"
 )
 
@@ -18,10 +19,17 @@ func TestRunScanner(t *testing.T) {
 		{Owner: "module-federation", Name: "core"},
 		{Owner: "aandrew-me", Name: "ytDownloader"},
 		{Owner: "mui", Name: "material-ui"},
+		// lets also add some go projects
+		{Owner: "rubensi-dev", Name: "github-risk-analyzer"},
+	}
+
+	client, err := githubhelper.GetAuthorizedClient(ctx)
+	if err != nil {
+		t.Fatal("Couldn't create authorized github client")
 	}
 
 	// Use 5 workers for the 8 tasks
-	results, err := RunScanner(ctx, tasks, 5)
+	results, err := RunScanner(ctx, tasks, 5, client)
 	if err != nil {
 		t.Fatalf("RunScanner failed: %v", err)
 	}
@@ -41,7 +49,13 @@ func TestRunScanner(t *testing.T) {
 func TestRunScanner_Empty(t *testing.T) {
 	ctx := t.Context()
 	tasks := []models.Repository{}
-	results, err := RunScanner(ctx, tasks, 1)
+
+	client, err := githubhelper.GetAuthorizedClient(ctx)
+	if err != nil {
+		t.Fatal("Couldn't create authorized github client")
+	}
+
+	results, err := RunScanner(ctx, tasks, 1, client)
 	if err != nil {
 		t.Fatalf("RunScanner failed: %v", err)
 	}
