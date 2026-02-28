@@ -16,12 +16,20 @@ func ExtractDeps(ctx context.Context, repo models.Repository, client *github.Cli
 
 	_, hasJS := langs["JavaScript"]
 	_, hasTS := langs["TypeScript"]
-	//_, hasGo := langs["Go"]
+	_, hasGo := langs["Go"]
 
 	var deps []models.Dependency
 	if hasJS || hasTS {
 		var err error
 		deps, err = ExtractDepsJS(ctx, repo, client)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't extract dependencies: %w", err)
+		}
+	}
+
+	if hasGo {
+		var err error
+		deps, err = ExtractDepsGo(ctx, repo, client)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't extract dependencies: %w", err)
 		}
