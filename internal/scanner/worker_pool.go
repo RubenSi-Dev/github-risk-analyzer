@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/google/go-github/github"
@@ -112,7 +111,7 @@ func scanJobConsumer(ctx context.Context, scanTaskChan chan scanJob, mu *sync.Mu
 
 			mu.Lock()
 			*results = append(*results, models.Risks{Repo: scanJob.Repo, Vulnerabilities: vulns, Err: ctx.Err()})
-			fmt.Printf("results: %v", *results)
+			//fmt.Printf("results: %v", *results)
 			mu.Unlock()
 		}
 	}

@@ -16,7 +16,7 @@ func GetOrganizationRepos(ctx context.Context, organization string, client *gith
 
 	result := make([]models.Repository, len(githRepos))
 	for i, githRepo := range githRepos {
-		result[i].Owner = githRepo.GetOwner().GetName()
+		result[i].Owner = githRepo.GetOwner().GetLogin()
 		result[i].Name = githRepo.GetName()
 	}
 
