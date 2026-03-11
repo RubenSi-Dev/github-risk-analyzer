@@ -1,6 +1,8 @@
 package models
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type Dependency struct {
 	Name      string
@@ -16,6 +18,18 @@ type Vulnerability struct {
 type Repository struct {
 	Owner string
 	Name  string
+}
+
+// Found risks
+type Risks struct {
+	Repo            Repository
+	Vulnerabilities []Vulnerability
+	Err             error
+}
+
+type Report struct {
+	Organization string
+	FoundRisks   []Risks
 }
 
 func (r Repository) GetUrl() string {
